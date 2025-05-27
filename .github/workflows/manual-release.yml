@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       checksum:
-        description: 'SHA256 checksum for the Monero binary'
+        description: 'Checksum for the Monero binary (see linux-x64 @ https://www.getmonero.org/downloads/hashes.txt)'
         required: true
         type: string
 
