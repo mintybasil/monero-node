@@ -32,14 +32,6 @@ jobs:
           sed -i "s/ENV VERSION=.*/ENV VERSION=${{ github.event.inputs.version }}/" Dockerfile
           sed -i "s/ENV CHECKSUM=.*/ENV CHECKSUM=${{ github.event.inputs.checksum }}/" Dockerfile
 
-      - name: Commit changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add Dockerfile
-          git commit -m "Update to Monero v${{ github.event.inputs.version }}"
-          git push
-
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -58,6 +50,18 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ github.event.inputs.version }}
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add Dockerfile
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update to Monero v${{ github.event.inputs.version }}"
+            git push
+          fi
 
       - name: Create Release
         id: create_release
