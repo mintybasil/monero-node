@@ -40,23 +40,6 @@ jobs:
           git commit -m "Update to Monero v${{ github.event.inputs.version }}"
           git push
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ github.event.inputs.version }}
-          release_name: Monero Node v${{ github.event.inputs.version }}
-          body: |
-            Monero Node Docker image for Monero v${{ github.event.inputs.version }}
-            
-            Changes:
-            - Updated to Monero v${{ github.event.inputs.version }}
-            - Binary checksum: ${{ github.event.inputs.checksum }}
-          draft: false
-          prerelease: false
-
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -75,4 +58,21 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ github.event.inputs.version }}
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          release_name: Monero Node v${{ github.event.inputs.version }}
+          body: |
+            Monero Node Docker image for Monero v${{ github.event.inputs.version }}
+            
+            Changes:
+            - Updated to Monero v${{ github.event.inputs.version }}
+            - Binary checksum: ${{ github.event.inputs.checksum }}
+          draft: false
+          prerelease: false
 
