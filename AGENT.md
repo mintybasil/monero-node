@@ -18,6 +18,7 @@ Docker-based Monero node deployment project that packages the official Monero da
 - GitHub Actions builds on every push
 - Publishes to GitHub Container Registry (ghcr.io)
 - Manual release workflow accepts version/checksum inputs, updates Dockerfile, creates releases
+- Automatic release workflow runs weekly to check for new Monero versions and auto-release
 - Automatic tagging with both `latest` and version-specific tags (e.g., `v0.18.3.4`)
 
 ## Configuration

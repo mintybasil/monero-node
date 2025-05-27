@@ -1,0 +1,136 @@
+name: Automatic Release
+
+on:
+  schedule:
+    # Run every Sunday at 6 AM UTC
+    - cron: '0 6 * * 0'
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get current Monero version
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(grep "ENV VERSION=" Dockerfile | cut -d'=' -f2)
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Get latest Monero version
+        id: latest_version
+        run: |
+          # Get latest release from Monero GitHub API
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/monero-project/monero/releases/latest | jq -r .tag_name | sed 's/^v//')
+          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest version: $LATEST_VERSION"
+
+      - name: Check if update needed
+        id: check_update
+        run: |
+          if [ "${{ steps.current_version.outputs.version }}" = "${{ steps.latest_version.outputs.version }}" ]; then
+            echo "No update needed. Current version ${{ steps.current_version.outputs.version }} is latest."
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Update needed: ${{ steps.current_version.outputs.version }} -> ${{ steps.latest_version.outputs.version }}"
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get checksum for new version
+        if: steps.check_update.outputs.update_needed == 'true'
+        id: get_checksum
+        run: |
+          # Download and parse hashes.txt
+          HASHES_URL="https://www.getmonero.org/downloads/hashes.txt"
+          NEW_VERSION="${{ steps.latest_version.outputs.version }}"
+
+          # TODO: Check the signature in hashes.txt
+          
+          # Download hashes file
+          curl -s "$HASHES_URL" > hashes.txt
+          
+          # Extract checksum for linux-x64 version
+          CHECKSUM=$(grep "monero-linux-x64-v${NEW_VERSION}.tar.bz2" hashes.txt | awk '{print $1}')
+          
+          if [ -z "$CHECKSUM" ]; then
+            echo "Error: Could not find checksum for version $NEW_VERSION"
+            exit 1
+          fi
+          
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+          echo "Found checksum for v$NEW_VERSION: $CHECKSUM"
+
+      - name: Update Dockerfile
+        if: steps.check_update.outputs.update_needed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.latest_version.outputs.version }}"
+          NEW_CHECKSUM="${{ steps.get_checksum.outputs.checksum }}"
+          
+          sed -i "s/ENV VERSION=.*/ENV VERSION=$NEW_VERSION/" Dockerfile
+          sed -i "s/ENV CHECKSUM=.*/ENV CHECKSUM=$NEW_CHECKSUM/" Dockerfile
+          
+          echo "Updated Dockerfile to version $NEW_VERSION with checksum $NEW_CHECKSUM"
+
+      - name: Setup Docker Buildx
+        if: steps.check_update.outputs.update_needed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        if: steps.check_update.outputs.update_needed == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: steps.check_update.outputs.update_needed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.latest_version.outputs.version }}
+
+      - name: Commit changes
+        if: steps.check_update.outputs.update_needed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add Dockerfile
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Automatic update to Monero v${{ steps.latest_version.outputs.version }}"
+            git push
+          fi
+
+      - name: Create Release
+        if: steps.check_update.outputs.update_needed == 'true'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.latest_version.outputs.version }}
+          release_name: Monero Node v${{ steps.latest_version.outputs.version }}
+          body: |
+            🤖 Automatic update to Monero v${{ steps.latest_version.outputs.version }}
+            
+            Changes:
+            - Updated to Monero v${{ steps.latest_version.outputs.version }}
+            - Binary checksum: ${{ steps.get_checksum.outputs.checksum }}            
+          draft: false
+          prerelease: false
